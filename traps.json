@@ -22,5 +22,13 @@
     "ground_truth_query": "SELECT e.name, d.dept_name FROM employees e JOIN departments d ON e.id = d.id;",
     "buggy_llm_query": "SELECT e.name, d.dept_name FROM employees e, departments d;",
     "explanation": "Omitting the join condition creates a Cartesian product (Cross Join), multiplying rows incorrectly."
+  },
+  {
+    "trap_id": "TRAP-004",
+    "trap_name": "Aggregate filtering in WHERE instead of HAVING",
+    "setup_sql": "CREATE TABLE orders (id INTEGER, customer TEXT, amount INTEGER);\nINSERT INTO orders VALUES (1, 'Alice', 100);\nINSERT INTO orders VALUES (2, 'Alice', 250);\nINSERT INTO orders VALUES (3, 'Bob', 50);",
+    "ground_truth_query": "SELECT customer FROM orders GROUP BY customer HAVING SUM(amount) > 100;",
+    "buggy_llm_query": "SELECT customer FROM orders WHERE SUM(amount) > 100 GROUP BY customer;",
+    "explanation": "Using aggregate functions in the WHERE clause violates SQL execution order because WHERE executes before aggregation."
   }
 ]

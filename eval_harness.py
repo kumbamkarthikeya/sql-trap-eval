@@ -34,20 +34,24 @@ def run_evaluation(traps_path, report_path):
         cursor.execute(test["ground_truth_query"])
         expected = cursor.fetchall()
         
-        # Get LLM Buggy Output
-        cursor.execute(test["buggy_llm_query"])
-        actual = cursor.fetchall()
+        # Get LLM Buggy Output (safely handle runtime/syntax errors)
+        try:
+            cursor.execute(test["buggy_llm_query"])
+            actual = cursor.fetchall()
+            passed = (expected == actual)
+        except sqlite3.Error as e:
+            actual = f"SQL Execution Error: {e}"
+            passed = False
 
         print(f"\n[Test Case] {test['trap_id']}: {test['trap_name']}")
         print(f"  - Ground Truth: {expected}")
         print(f"  - LLM Output:   {actual}")
 
-        passed = (expected == actual)
         if passed:
             print("  - Status: PASS")
             status = "PASS"
         else:
-            print("  - Status: FAIL (Silent semantic error caught!)")
+            print("  - Status: FAIL (Semantic or execution trap caught!)")
             print(f"  - Reason: {test['explanation']}")
             status = "FAIL"
             detected_traps += 1
