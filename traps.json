@@ -1,0 +1,18 @@
+[
+  {
+    "trap_id": "TRAP-001",
+    "trap_name": "NOT IN with NULL subquery",
+    "setup_sql": "CREATE TABLE users (id INTEGER, name TEXT, status TEXT);\nINSERT INTO users VALUES (1, 'Alice', 'active');\nINSERT INTO users VALUES (2, 'Bob', NULL);\nINSERT INTO users VALUES (3, 'Charlie', 'active');",
+    "ground_truth_query": "SELECT name FROM users WHERE status = 'active' AND id NOT IN (SELECT id FROM users WHERE status IS NULL);",
+    "buggy_llm_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');",
+    "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows."
+  },
+  {
+    "trap_id": "TRAP-002",
+    "trap_name": "COUNT(column) omitting NULLs",
+    "setup_sql": "CREATE TABLE feedback (id INTEGER, rating INTEGER);\nINSERT INTO feedback VALUES (1, 5);\nINSERT INTO feedback VALUES (2, NULL);\nINSERT INTO feedback VALUES (3, 4);",
+    "ground_truth_query": "SELECT COUNT(*) FROM feedback;",
+    "buggy_llm_query": "SELECT COUNT(rating) FROM feedback;",
+    "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records."
+  }
+]

@@ -1,46 +1,22 @@
 import sqlite3
+import json
+
+def load_traps(filepath="traps.json"):
+    """Loads adversarial SQL traps from an external JSON benchmark file."""
+    with open(filepath, "r") as f:
+        return json.load(f)
 
 def run_evaluation():
     print("==================================================")
-    print("       SQL-Trap-Eval: Multi-Trap Test Suite       ")
+    print("       SQL-Trap-Eval: JSON-Driven Test Runner     ")
     print("==================================================")
 
-    # Define our expanding test suite of adversarial traps
-    test_cases = [
-        {
-            "trap_id": "TRAP-001",
-            "trap_name": "NOT IN with NULL subquery",
-            "setup_sql": """
-                CREATE TABLE users (id INTEGER, name TEXT, status TEXT);
-                INSERT INTO users VALUES (1, 'Alice', 'active');
-                INSERT INTO users VALUES (2, 'Bob', NULL);
-                INSERT INTO users VALUES (3, 'Charlie', 'active');
-            """,
-            "ground_truth_query": """
-                SELECT name FROM users 
-                WHERE status = 'active' 
-                AND id NOT IN (SELECT id FROM users WHERE status IS NULL);
-            """,
-            "buggy_llm_query": """
-                SELECT name FROM users 
-                WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');
-            """,
-            "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows."
-        },
-        {
-            "trap_id": "TRAP-002",
-            "trap_name": "COUNT(column) omitting NULLs",
-            "setup_sql": """
-                CREATE TABLE feedback (id INTEGER, rating INTEGER);
-                INSERT INTO feedback VALUES (1, 5);
-                INSERT INTO feedback VALUES (2, NULL);
-                INSERT INTO feedback VALUES (3, 4);
-            """,
-            "ground_truth_query": "SELECT COUNT(*) FROM feedback;",
-            "buggy_llm_query": "SELECT COUNT(rating) FROM feedback;",
-            "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records."
-        }
-    ]
+    # Load test cases dynamically from our external benchmark file
+    try:
+        test_cases = load_traps("traps.json")
+    except FileNotFoundError:
+        print("Error: traps.json not found! Please check file placement.")
+        return
 
     detected_traps = 0
 
