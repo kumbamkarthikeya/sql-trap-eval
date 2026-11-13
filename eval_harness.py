@@ -1,21 +1,22 @@
 import sqlite3
 import json
 import datetime
+import argparse
 
-def load_traps(filepath="traps.json"):
+def load_traps(filepath):
     """Loads adversarial SQL traps from an external JSON benchmark file."""
     with open(filepath, "r") as f:
         return json.load(f)
 
-def run_evaluation():
+def run_evaluation(traps_path, report_path):
     print("==================================================")
-    print("    SQL-Trap-Eval: Benchmark Report & Runner      ")
+    print("      SQL-Trap-Eval: CLI Benchmark Runner         ")
     print("==================================================")
 
     try:
-        test_cases = load_traps("traps.json")
+        test_cases = load_traps(traps_path)
     except FileNotFoundError:
-        print("Error: traps.json not found! Please check file placement.")
+        print(f"Error: {traps_path} not found! Please check file placement.")
         return
 
     detected_traps = 0
@@ -71,13 +72,18 @@ def run_evaluation():
         "results": report_results
     }
 
-    with open("eval_report.json", "w") as f:
+    with open(report_path, "w") as f:
         json.dump(report, f, indent=4)
 
     print("\n==================================================")
     print(f"Suite Summary: {detected_traps} / {len(test_cases)} Adversarial Traps Successfully Triggered")
-    print("Benchmark report successfully exported to eval_report.json")
+    print(f"Benchmark report successfully exported to {report_path}")
     print("==================================================")
 
 if __name__ == "__main__":
-    run_evaluation()
+    parser = argparse.ArgumentParser(description="SQL-Trap-Eval: Adversarial SQL Trap Evaluation Engine")
+    parser.add_argument("--traps", type=str, default="traps.json", help="Path to JSON file containing adversarial SQL traps")
+    parser.add_argument("--report", type=str, default="eval_report.json", help="Path to export evaluation JSON report")
+    args = parser.parse_args()
+    
+    run_evaluation(args.traps, args.report)
