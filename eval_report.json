@@ -1,0 +1,31 @@
+{
+    "timestamp": "2026-11-13 19:05:54.547405",
+    "total_traps": 3,
+    "traps_triggered": 3,
+    "results": [
+        {
+            "trap_id": "TRAP-001",
+            "trap_name": "NOT IN with NULL subquery",
+            "status": "FAIL",
+            "ground_truth": "[('Alice',), ('Charlie',)]",
+            "llm_output": "[('Bob',)]",
+            "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows."
+        },
+        {
+            "trap_id": "TRAP-002",
+            "trap_name": "COUNT(column) omitting NULLs",
+            "status": "FAIL",
+            "ground_truth": "[(3,)]",
+            "llm_output": "[(2,)]",
+            "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records."
+        },
+        {
+            "trap_id": "TRAP-003",
+            "trap_name": "Implicit Cross Join (Missing ON Clause)",
+            "status": "FAIL",
+            "ground_truth": "[('Alice', 'Engineering'), ('Bob', 'Marketing')]",
+            "llm_output": "[('Alice', 'Engineering'), ('Alice', 'Marketing'), ('Bob', 'Engineering'), ('Bob', 'Marketing')]",
+            "explanation": "Omitting the join condition creates a Cartesian product (Cross Join), multiplying rows incorrectly."
+        }
+    ]
+}

@@ -14,5 +14,13 @@
     "ground_truth_query": "SELECT COUNT(*) FROM feedback;",
     "buggy_llm_query": "SELECT COUNT(rating) FROM feedback;",
     "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records."
+  },
+  {
+    "trap_id": "TRAP-003",
+    "trap_name": "Implicit Cross Join (Missing ON Clause)",
+    "setup_sql": "CREATE TABLE employees (id INTEGER, name TEXT);\nCREATE TABLE departments (id INTEGER, dept_name TEXT);\nINSERT INTO employees VALUES (1, 'Alice');\nINSERT INTO employees VALUES (2, 'Bob');\nINSERT INTO departments VALUES (1, 'Engineering');\nINSERT INTO departments VALUES (2, 'Marketing');",
+    "ground_truth_query": "SELECT e.name, d.dept_name FROM employees e JOIN departments d ON e.id = d.id;",
+    "buggy_llm_query": "SELECT e.name, d.dept_name FROM employees e, departments d;",
+    "explanation": "Omitting the join condition creates a Cartesian product (Cross Join), multiplying rows incorrectly."
   }
 ]
