@@ -2,33 +2,41 @@
   {
     "trap_id": "TRAP-001",
     "trap_name": "NOT IN with NULL subquery",
-    "setup_sql": "CREATE TABLE users (id INTEGER, name TEXT, status TEXT);\nINSERT INTO users VALUES (1, 'Alice', 'active');\nINSERT INTO users VALUES (2, 'Bob', NULL);\nINSERT INTO users VALUES (3, 'Charlie', 'active');",
-    "ground_truth_query": "SELECT name FROM users WHERE status = 'active' AND id NOT IN (SELECT id FROM users WHERE status IS NULL);",
-    "buggy_llm_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');",
-    "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows."
+    "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows.",
+    "setup_sql": "CREATE TABLE users (id INT, name TEXT, status TEXT); INSERT INTO users VALUES (1, 'Alice', 'active'), (2, 'Bob', NULL), (3, 'Charlie', 'active');",
+    "ground_truth_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');",
+    "buggy_llm_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');"
   },
   {
     "trap_id": "TRAP-002",
     "trap_name": "COUNT(column) omitting NULLs",
-    "setup_sql": "CREATE TABLE feedback (id INTEGER, rating INTEGER);\nINSERT INTO feedback VALUES (1, 5);\nINSERT INTO feedback VALUES (2, NULL);\nINSERT INTO feedback VALUES (3, 4);",
-    "ground_truth_query": "SELECT COUNT(*) FROM feedback;",
-    "buggy_llm_query": "SELECT COUNT(rating) FROM feedback;",
-    "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records."
+    "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records.",
+    "setup_sql": "CREATE TABLE orders (order_id INT, customer_id INT); INSERT INTO orders VALUES (1, 101), (2, NULL), (3, 103);",
+    "ground_truth_query": "SELECT COUNT(*) FROM orders;",
+    "buggy_llm_query": "SELECT COUNT(customer_id) FROM orders;"
   },
   {
     "trap_id": "TRAP-003",
-    "trap_name": "Implicit Cross Join (Missing ON Clause)",
-    "setup_sql": "CREATE TABLE employees (id INTEGER, name TEXT);\nCREATE TABLE departments (id INTEGER, dept_name TEXT);\nINSERT INTO employees VALUES (1, 'Alice');\nINSERT INTO employees VALUES (2, 'Bob');\nINSERT INTO departments VALUES (1, 'Engineering');\nINSERT INTO departments VALUES (2, 'Marketing');",
-    "ground_truth_query": "SELECT e.name, d.dept_name FROM employees e JOIN departments d ON e.id = d.id;",
-    "buggy_llm_query": "SELECT e.name, d.dept_name FROM employees e, departments d;",
-    "explanation": "Omitting the join condition creates a Cartesian product (Cross Join), multiplying rows incorrectly."
+    "trap_name": "Implicit cross join (missing ON clause)",
+    "explanation": "Omitting the JOIN condition multiplies row outputs via Cartesian product.",
+    "setup_sql": "CREATE TABLE departments (id INT, name TEXT); CREATE TABLE staff (id INT, dept_id INT, name TEXT); INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Marketing'); INSERT INTO staff VALUES (1, 1, 'Alice'), (2, 2, 'Bob');",
+    "ground_truth_query": "SELECT s.name, d.name FROM staff s JOIN departments d ON s.dept_id = d.id;",
+    "buggy_llm_query": "SELECT s.name, d.name FROM staff s, departments d;"
   },
   {
     "trap_id": "TRAP-004",
     "trap_name": "Aggregate filtering in WHERE instead of HAVING",
-    "setup_sql": "CREATE TABLE orders (id INTEGER, customer TEXT, amount INTEGER);\nINSERT INTO orders VALUES (1, 'Alice', 100);\nINSERT INTO orders VALUES (2, 'Alice', 250);\nINSERT INTO orders VALUES (3, 'Bob', 50);",
-    "ground_truth_query": "SELECT customer FROM orders GROUP BY customer HAVING SUM(amount) > 100;",
-    "buggy_llm_query": "SELECT customer FROM orders WHERE SUM(amount) > 100 GROUP BY customer;",
-    "explanation": "Using aggregate functions in the WHERE clause violates SQL execution order because WHERE executes before aggregation."
+    "explanation": "Using aggregate functions in the WHERE clause triggers a syntax execution error.",
+    "setup_sql": "CREATE TABLE sales (region TEXT, amount INT); INSERT INTO sales VALUES ('North', 500), ('North', 200), ('South', 300);",
+    "ground_truth_query": "SELECT region, SUM(amount) FROM sales GROUP BY region HAVING SUM(amount) > 400;",
+    "buggy_llm_query": "SELECT region, SUM(amount) FROM sales WHERE SUM(amount) > 400 GROUP BY region;"
+  },
+  {
+    "trap_id": "TRAP-005",
+    "trap_name": "String Literal Case-Sensitivity Collation Trap",
+    "explanation": "LLMs often assume SQL string matching is case-insensitive by default, failing strict collation rules.",
+    "setup_sql": "CREATE TABLE accounts (id INT, email TEXT); INSERT INTO accounts VALUES (1, 'Admin@Company.com'), (2, 'user@company.com');",
+    "ground_truth_query": "SELECT id FROM accounts WHERE email = 'Admin@Company.com';",
+    "buggy_llm_query": "SELECT id FROM accounts WHERE email = 'admin@company.com';"
   }
 ]
