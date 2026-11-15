@@ -8,10 +8,26 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-8">
     <div class="max-w-4xl mx-auto">
-        <header class="mb-10 text-center">
+        <header class="mb-8 text-center">
             <h1 class="text-4xl font-extrabold tracking-tight text-indigo-400 mb-2">SQL-Trap-Eval</h1>
             <p class="text-slate-400">Adversarial SQL Trap Evaluation Engine & Benchmark Dashboard</p>
         </header>
+
+        <!-- Metrics Banner -->
+        <div class="grid grid-cols-3 gap-4 mb-8">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-indigo-400" id="total-traps">{{ traps|length }}</div>
+                <div class="text-xs text-slate-400 uppercase tracking-wider mt-1">Total Loaded Traps</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-green-400" id="tests-passed">0</div>
+                <div class="text-xs text-slate-400 uppercase tracking-wider mt-1">Traps Caught (Failed LLM)</div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-amber-400" id="tests-run">0</div>
+                <div class="text-xs text-slate-400 uppercase tracking-wider mt-1">Evaluations Executed</div>
+            </div>
+        </div>
 
         <div class="space-y-6">
             {% for trap in traps %}
@@ -24,8 +40,8 @@
                 <p class="text-sm text-slate-400 mb-4"><strong class="text-slate-300">Trap Explanation:</strong> {{ trap.explanation }}</p>
                 
                 <div class="mb-4">
-                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Default Buggy LLM Query:</label>
-                    <input type="text" id="query-{{ trap.trap_id }}" value="{{ trap.buggy_llm_query }}" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-indigo-200 font-mono focus:outline-none focus:border-indigo-500">
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Edit & Test SQL Query (Sandbox):</label>
+                    <textarea id="query-{{ trap.trap_id }}" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-indigo-200 font-mono focus:outline-none focus:border-indigo-500">{{ trap.buggy_llm_query }}</textarea>
                 </div>
 
                 <button onclick="runTest('{{ trap.trap_id }}')" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition shadow-md">
@@ -39,6 +55,9 @@
     </div>
 
     <script>
+        let testsRunCount = 0;
+        let testsCaughtCount = 0;
+
         async function runTest(trapId) {
             const query = document.getElementById(`query-${trapId}`).value;
             const resultBox = document.getElementById(`result-${trapId}`);
@@ -54,13 +73,22 @@
 
             const data = await response.json();
             
+            testsRunCount++;
+            document.getElementById('tests-run').innerText = testsRunCount;
+
             if (data.success) {
                 const statusColor = data.passed ? 'text-green-400' : 'text-red-400';
-                const statusText = data.passed ? 'PASS (Unexpectedly passed trap)' : 'CAUGHT TRAP (LLM failed as expected)';
+                const statusText = data.passed ? 'PASS (Query matches ground truth)' : 'CAUGHT TRAP (LLM failed as expected)';
+                
+                if (!data.passed) {
+                    testsCaughtCount++;
+                    document.getElementById('tests-passed').innerText = testsCaughtCount;
+                }
+
                 resultBox.innerHTML = `
                     <div class="${statusColor} font-bold mb-1">Status: ${statusText}</div>
-                    <div class="text-slate-300">Expected (Ground Truth): ${data.expected}</div>
-                    <div class="text-slate-300">Actual (LLM Output): ${data.actual}</div>
+                    <div class="text-slate-300 mb-1">Expected (Ground Truth): ${data.expected}</div>
+                    <div class="text-slate-300">Actual (Query Output): ${data.actual}</div>
                 `;
             } else {
                 resultBox.innerHTML = `
