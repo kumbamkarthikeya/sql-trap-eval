@@ -1,0 +1,37 @@
+{
+  "benchmark": "sql-trap-eval",
+  "scorecard": {
+    "total_traps": 4,
+    "traps_caught": 4,
+    "adversarial_catch_rate": "100.0%"
+  },
+  "results": [
+    {
+      "trap_id": "TRAP-001",
+      "trap_name": "NOT IN with NULL subquery",
+      "caught_trap": true,
+      "expected": "[('Alice',), ('Charlie',)]",
+      "actual": "[('Bob',)]"
+    },
+    {
+      "trap_id": "TRAP-002",
+      "trap_name": "COUNT(column) omitting NULLs",
+      "caught_trap": true,
+      "expected": "[(3,)]",
+      "actual": "[(2,)]"
+    },
+    {
+      "trap_id": "TRAP-003",
+      "trap_name": "Implicit Cross Join (Missing ON Clause)",
+      "caught_trap": true,
+      "expected": "[('Alice', 'Engineering'), ('Bob', 'Marketing')]",
+      "actual": "[('Alice', 'Engineering'), ('Alice', 'Marketing'), ('Bob', 'Engineering'), ('Bob', 'Marketing')]"
+    },
+    {
+      "trap_id": "TRAP-004",
+      "trap_name": "Aggregate filtering in WHERE instead of HAVING",
+      "caught_trap": true,
+      "error": "misuse of aggregate: SUM()"
+    }
+  ]
+}
