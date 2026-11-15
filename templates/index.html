@@ -3,14 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL-Trap-Eval Dashboard</title>
+    <title>SQL-Trap-Eval Benchmark Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-8">
     <div class="max-w-4xl mx-auto">
-        <header class="mb-8 text-center">
-            <h1 class="text-4xl font-extrabold tracking-tight text-indigo-400 mb-2">SQL-Trap-Eval</h1>
-            <p class="text-slate-400">Adversarial SQL Trap Evaluation Engine & Benchmark Dashboard</p>
+        <header class="mb-8 flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-extrabold tracking-tight text-indigo-400 mb-1">SQL-Trap-Eval</h1>
+                <p class="text-slate-400 text-sm">Adversarial SQL Trap Evaluation Engine & Benchmark Dashboard</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex gap-3">
+                <button onclick="runAllTests()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition shadow-md">
+                    ⚡ Run All Traps
+                </button>
+                <button onclick="exportReport()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-sm transition border border-slate-700 shadow-md">
+                    📥 Export JSON Report
+                </button>
+            </div>
         </header>
 
         <!-- Metrics Banner -->
@@ -31,7 +41,7 @@
 
         <div class="space-y-6">
             {% for trap in traps %}
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg trap-card" data-trap-id="{{ trap.trap_id }}">
                 <div class="flex justify-between items-center mb-3">
                     <span class="px-3 py-1 bg-indigo-900/50 text-indigo-300 rounded-full text-sm font-semibold border border-indigo-700/50">{{ trap.trap_id }}</span>
                     <h2 class="text-xl font-bold text-slate-200">{{ trap.trap_name }}</h2>
@@ -48,15 +58,14 @@
                     Run Evaluation Test
                 </button>
 
-                <div id="result-{{ trap.trap_id }}" class="mt-4 hidden p-4 rounded-lg text-sm font-mono bg-slate-950 border border-slate-800"></div>
+                <div id="result-{{ trap.trap_id }}" class="mt-4 hidden p-4 rounded-lg text-sm font-mono bg-slate-950 border border-slate-800 result-box"></div>
             </div>
             {% endfor %}
         </div>
     </div>
 
     <script>
-        let testsRunCount = 0;
-        let testsCaughtCount = 0;
+        let evaluationResults = {};
 
         async function runTest(trapId) {
             const query = document.getElementById(`query-${trapId}`).value;
@@ -72,19 +81,14 @@
             });
 
             const data = await response.json();
+            evaluationResults[trapId] = { query, data, timestamp: new Date().toISOString() };
             
-            testsRunCount++;
-            document.getElementById('tests-run').innerText = testsRunCount;
+            updateMetrics();
 
             if (data.success) {
                 const statusColor = data.passed ? 'text-green-400' : 'text-red-400';
                 const statusText = data.passed ? 'PASS (Query matches ground truth)' : 'CAUGHT TRAP (LLM failed as expected)';
                 
-                if (!data.passed) {
-                    testsCaughtCount++;
-                    document.getElementById('tests-passed').innerText = testsCaughtCount;
-                }
-
                 resultBox.innerHTML = `
                     <div class="${statusColor} font-bold mb-1">Status: ${statusText}</div>
                     <div class="text-slate-300 mb-1">Expected (Ground Truth): ${data.expected}</div>
@@ -96,6 +100,53 @@
                     <div class="text-slate-300">Error: ${data.error}</div>
                 `;
             }
+        }
+
+        async function runAllTests() {
+            const cards = document.querySelectorAll('.trap-card');
+            for (const card of cards) {
+                const trapId = card.getAttribute('data-trap-id');
+                await runTest(trapId);
+            }
+        }
+
+        function updateMetrics() {
+            const evaluatedTraps = Object.keys(evaluationResults).length;
+            let caughtCount = 0;
+
+            for (const id in evaluationResults) {
+                const res = evaluationResults[id].data;
+                if (res.success && !res.passed) {
+                    caughtCount++;
+                }
+            }
+
+            document.getElementById('tests-run').innerText = evaluatedTraps;
+            document.getElementById('tests-passed').innerText = caughtCount;
+        }
+
+        function exportReport() {
+            const reportData = {
+                suite: "sql-trap-eval",
+                version: "1.0.0",
+                executed_at: new Date().toISOString(),
+                summary: {
+                    total_traps: document.getElementById('total-traps').innerText,
+                    evaluations_run: document.getElementById('tests-run').innerText,
+                    traps_caught: document.getElementById('tests-passed').innerText
+                },
+                results: evaluationResults
+            };
+
+            const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sql-trap-benchmark-report.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
     </script>
 </body>
