@@ -1,17 +1,18 @@
-# SQL-Trap-Eval 🛡️🕳️
+# SQL-Trap-Eval 🛡️⚡
+> **Adversarial SQL Trap Evaluation Engine & Full-Stack Benchmark Dashboard**
 
-`sql-trap-eval` is an open-source adversarial evaluation benchmark and test runner designed to detect silent semantic failures, logical traps, and hallucinations in Large Language Model (LLM) generated SQL queries.
+[![SQL-Trap-Eval CI](https://github.com/Karthikeya-kumba/sql-trap-eval/actions/workflows/eval.yml/badge.svg)](https://github.com/Karthikeya-kumba/sql-trap-eval/actions)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/flask-3.0%2B-green.svg)](https://flask.palletsprojects.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🎯 The Problem
-Standard Text-to-SQL benchmarks only evaluate syntax validity or exact string matches. However, LLMs frequently generate syntactically valid SQL queries that contain **silent semantic errors** (e.g., NULL poisoning in subqueries, column omission in aggregate functions, or unintended Cartesian products). These bugs pass standard test suites but corrupt production data.
+---
 
-## 🛠️ Benchmark Traps Included
-1. **TRAP-001 (`NOT IN` + `NULL` Subquery)**: Unaware that a single `NULL` value in a subquery poisons the `NOT IN` operator, causing it to return zero rows.
-2. **TRAP-002 (`COUNT(column)` vs `COUNT(*)` Silent Omission)**: Using `COUNT(column)` which silently ignores rows where the column is `NULL`, leading to undercounting.
-3. **TRAP-003 (Implicit Cartesian Product / Cross Join)**: Omitting join conditions (`ON`), creating an unintended cross join that multiplies row counts.
+## 🎯 Overview
+**SQL-Trap-Eval** is a high-precision adversarial evaluation harness designed to systematically test, catch, and benchmark LLM failure modes in complex SQL generation (such as `NOT IN` NULL poisoning, implicit cross-joins, aggregate filtering traps, and `COUNT()` omissions). 
 
-## 🚀 Quickstart
+Built to solve the core engineering challenge of **deterministic verification of stochastic AI outputs**, this platform features an in-memory SQLite oracle, a full-stack Tailwind CSS interactive query sandbox, automated CLI benchmark runners, and robust CI/CD pipelines.
 
-### 1. Run the Evaluation Suite
-```bash
-python eval_harness.py
+---
+
+## 🏗️ System Architecture & Core Components
