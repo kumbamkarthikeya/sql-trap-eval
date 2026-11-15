@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL-Trap-Eval Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold tracking-tight text-indigo-400 mb-2">SQL-Trap-Eval</h1>
+            <p class="text-slate-400">Adversarial SQL Trap Evaluation Engine & Benchmark Dashboard</p>
+        </header>
+
+        <div class="space-y-6">
+            {% for trap in traps %}
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="px-3 py-1 bg-indigo-900/50 text-indigo-300 rounded-full text-sm font-semibold border border-indigo-700/50">{{ trap.trap_id }}</span>
+                    <h2 class="text-xl font-bold text-slate-200">{{ trap.trap_name }}</h2>
+                </div>
+                
+                <p class="text-sm text-slate-400 mb-4"><strong class="text-slate-300">Trap Explanation:</strong> {{ trap.explanation }}</p>
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Default Buggy LLM Query:</label>
+                    <input type="text" id="query-{{ trap.trap_id }}" value="{{ trap.buggy_llm_query }}" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-indigo-200 font-mono focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <button onclick="runTest('{{ trap.trap_id }}')" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition shadow-md">
+                    Run Evaluation Test
+                </button>
+
+                <div id="result-{{ trap.trap_id }}" class="mt-4 hidden p-4 rounded-lg text-sm font-mono bg-slate-950 border border-slate-800"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        async function runTest(trapId) {
+            const query = document.getElementById(`query-${trapId}`).value;
+            const resultBox = document.getElementById(`result-${trapId}`);
+            
+            resultBox.classList.remove('hidden');
+            resultBox.innerHTML = '<span class="text-yellow-400">Executing query against in-memory SQLite oracle...</span>';
+
+            const response = await fetch('/evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trap_id: trapId, query: query })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                const statusColor = data.passed ? 'text-green-400' : 'text-red-400';
+                const statusText = data.passed ? 'PASS (Unexpectedly passed trap)' : 'CAUGHT TRAP (LLM failed as expected)';
+                resultBox.innerHTML = `
+                    <div class="${statusColor} font-bold mb-1">Status: ${statusText}</div>
+                    <div class="text-slate-300">Expected (Ground Truth): ${data.expected}</div>
+                    <div class="text-slate-300">Actual (LLM Output): ${data.actual}</div>
+                `;
+            } else {
+                resultBox.innerHTML = `
+                    <div class="text-red-400 font-bold mb-1">Status: TRAP TRIGGERED (SQL Execution Error)</div>
+                    <div class="text-slate-300">Error: ${data.error}</div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

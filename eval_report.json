@@ -1,7 +1,7 @@
 {
-    "timestamp": "2026-11-13 19:05:54.547405",
-    "total_traps": 3,
-    "traps_triggered": 3,
+    "timestamp": "2026-11-13 19:30:35.466249",
+    "total_traps": 4,
+    "traps_triggered": 4,
     "results": [
         {
             "trap_id": "TRAP-001",
@@ -26,6 +26,14 @@
             "ground_truth": "[('Alice', 'Engineering'), ('Bob', 'Marketing')]",
             "llm_output": "[('Alice', 'Engineering'), ('Alice', 'Marketing'), ('Bob', 'Engineering'), ('Bob', 'Marketing')]",
             "explanation": "Omitting the join condition creates a Cartesian product (Cross Join), multiplying rows incorrectly."
+        },
+        {
+            "trap_id": "TRAP-004",
+            "trap_name": "Aggregate filtering in WHERE instead of HAVING",
+            "status": "FAIL",
+            "ground_truth": "[('Alice',)]",
+            "llm_output": "SQL Execution Error: misuse of aggregate: SUM()",
+            "explanation": "Using aggregate functions in the WHERE clause violates SQL execution order because WHERE executes before aggregation."
         }
     ]
 }
