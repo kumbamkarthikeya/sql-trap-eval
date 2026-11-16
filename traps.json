@@ -2,15 +2,15 @@
   {
     "trap_id": "TRAP-001",
     "trap_name": "NOT IN with NULL subquery",
-    "explanation": "A NULL in the subquery poisoned the NOT IN operator, returning 0 rows.",
+    "explanation": "Find names of users whose id is not in the list of active user ids (note: status column contains NULLs).",
     "setup_sql": "CREATE TABLE users (id INT, name TEXT, status TEXT); INSERT INTO users VALUES (1, 'Alice', 'active'), (2, 'Bob', NULL), (3, 'Charlie', 'active');",
-    "ground_truth_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');",
+    "ground_truth_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active' AND id IS NOT NULL) AND (status != 'active' OR status IS NULL);",
     "buggy_llm_query": "SELECT name FROM users WHERE id NOT IN (SELECT id FROM users WHERE status = 'active');"
   },
   {
     "trap_id": "TRAP-002",
     "trap_name": "COUNT(column) omitting NULLs",
-    "explanation": "COUNT(column) silently ignores rows where the column is NULL, undercounting total records.",
+    "explanation": "Count the total number of orders in the orders table, including orders where customer_id is NULL.",
     "setup_sql": "CREATE TABLE orders (order_id INT, customer_id INT); INSERT INTO orders VALUES (1, 101), (2, NULL), (3, 103);",
     "ground_truth_query": "SELECT COUNT(*) FROM orders;",
     "buggy_llm_query": "SELECT COUNT(customer_id) FROM orders;"
@@ -18,7 +18,7 @@
   {
     "trap_id": "TRAP-003",
     "trap_name": "Implicit cross join (missing ON clause)",
-    "explanation": "Omitting the JOIN condition multiplies row outputs via Cartesian product.",
+    "explanation": "Return each staff member's name alongside their assigned department name.",
     "setup_sql": "CREATE TABLE departments (id INT, name TEXT); CREATE TABLE staff (id INT, dept_id INT, name TEXT); INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Marketing'); INSERT INTO staff VALUES (1, 1, 'Alice'), (2, 2, 'Bob');",
     "ground_truth_query": "SELECT s.name, d.name FROM staff s JOIN departments d ON s.dept_id = d.id;",
     "buggy_llm_query": "SELECT s.name, d.name FROM staff s, departments d;"
@@ -26,7 +26,7 @@
   {
     "trap_id": "TRAP-004",
     "trap_name": "Aggregate filtering in WHERE instead of HAVING",
-    "explanation": "Using aggregate functions in the WHERE clause triggers a syntax execution error.",
+    "explanation": "Return regions and their total sales amount where total sales exceed 400.",
     "setup_sql": "CREATE TABLE sales (region TEXT, amount INT); INSERT INTO sales VALUES ('North', 500), ('North', 200), ('South', 300);",
     "ground_truth_query": "SELECT region, SUM(amount) FROM sales GROUP BY region HAVING SUM(amount) > 400;",
     "buggy_llm_query": "SELECT region, SUM(amount) FROM sales WHERE SUM(amount) > 400 GROUP BY region;"
@@ -34,9 +34,89 @@
   {
     "trap_id": "TRAP-005",
     "trap_name": "String Literal Case-Sensitivity Collation Trap",
-    "explanation": "LLMs often assume SQL string matching is case-insensitive by default, failing strict collation rules.",
+    "explanation": "Find the id of the account with exact email 'Admin@Company.com'.",
     "setup_sql": "CREATE TABLE accounts (id INT, email TEXT); INSERT INTO accounts VALUES (1, 'Admin@Company.com'), (2, 'user@company.com');",
     "ground_truth_query": "SELECT id FROM accounts WHERE email = 'Admin@Company.com';",
     "buggy_llm_query": "SELECT id FROM accounts WHERE email = 'admin@company.com';"
+  },
+  {
+    "trap_id": "TRAP-006",
+    "trap_name": "LEFT JOIN Filter in WHERE vs ON",
+    "explanation": "List all customers and the count of their 'completed' orders (customers with 0 completed orders must still appear with 0).",
+    "setup_sql": "CREATE TABLE customers (id INT, name TEXT); CREATE TABLE orders (id INT, cust_id INT, status TEXT); INSERT INTO customers VALUES (1, 'Alice'), (2, 'Bob'); INSERT INTO orders VALUES (10, 1, 'completed'), (11, 2, 'cancelled');",
+    "ground_truth_query": "SELECT c.name, COUNT(o.id) FROM customers c LEFT JOIN orders o ON c.id = o.cust_id AND o.status = 'completed' GROUP BY c.id, c.name;",
+    "buggy_llm_query": "SELECT c.name, COUNT(o.id) FROM customers c LEFT JOIN orders o ON c.id = o.cust_id WHERE o.status = 'completed' GROUP BY c.id, c.name;"
+  },
+  {
+    "trap_id": "TRAP-007",
+    "trap_name": "Integer Division Truncation in SQLite",
+    "explanation": "Calculate the exact decimal conversion rate (converted / total) for each campaign.",
+    "setup_sql": "CREATE TABLE campaigns (name TEXT, converted INT, total INT); INSERT INTO campaigns VALUES ('Alpha', 1, 4), ('Beta', 3, 4);",
+    "ground_truth_query": "SELECT name, CAST(converted AS REAL) / total FROM campaigns;",
+    "buggy_llm_query": "SELECT name, converted / total FROM campaigns;"
+  },
+  {
+    "trap_id": "TRAP-008",
+    "trap_name": "Window Function Default RANGE vs ROWS Frame",
+    "explanation": "Compute a strict row-by-row running total of amount ordered by day (ties on the same day must accumulate one row at a time, not together).",
+    "setup_sql": "CREATE TABLE ledger (id INT, day INT, amount INT); INSERT INTO ledger VALUES (1, 1, 100), (2, 1, 200), (3, 2, 50);",
+    "ground_truth_query": "SELECT id, SUM(amount) OVER (ORDER BY day, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM ledger;",
+    "buggy_llm_query": "SELECT id, SUM(amount) OVER (ORDER BY day) FROM ledger;"
+  },
+  {
+    "trap_id": "TRAP-009",
+    "trap_name": "NULL Equality Comparison (= NULL instead of IS NULL)",
+    "explanation": "Retrieve the names of employees who do not have a manager assigned (manager_id is NULL).",
+    "setup_sql": "CREATE TABLE employees (id INT, name TEXT, manager_id INT); INSERT INTO employees VALUES (1, 'CEO', NULL), (2, 'VP', 1);",
+    "ground_truth_query": "SELECT name FROM employees WHERE manager_id IS NULL;",
+    "buggy_llm_query": "SELECT name FROM employees WHERE manager_id = NULL;"
+  },
+  {
+    "trap_id": "TRAP-010",
+    "trap_name": "GROUP BY Column Omission / Non-Deterministic Collapse",
+    "explanation": "Return each department and the highest salary in that department.",
+    "setup_sql": "CREATE TABLE salaries (dept TEXT, emp TEXT, pay INT); INSERT INTO salaries VALUES ('Eng', 'A', 100), ('Eng', 'B', 150), ('Ops', 'C', 90);",
+    "ground_truth_query": "SELECT dept, MAX(pay) FROM salaries GROUP BY dept;",
+    "buggy_llm_query": "SELECT dept, emp, MAX(pay) FROM salaries;"
+  },
+  {
+    "trap_id": "TRAP-011",
+    "trap_name": "UNION vs UNION ALL Deduplication Loss",
+    "explanation": "Combine all transaction amounts from 2025 and 2026 without removing duplicate amounts across years.",
+    "setup_sql": "CREATE TABLE tx_2025 (amt INT); CREATE TABLE tx_2026 (amt INT); INSERT INTO tx_2025 VALUES (50), (100); INSERT INTO tx_2026 VALUES (50), (200);",
+    "ground_truth_query": "SELECT amt FROM tx_2025 UNION ALL SELECT amt FROM tx_2026;",
+    "buggy_llm_query": "SELECT amt FROM tx_2025 UNION SELECT amt FROM tx_2026;"
+  },
+  {
+    "trap_id": "TRAP-012",
+    "trap_name": "BETWEEN Inclusive Boundary Off-By-One",
+    "explanation": "Select event ids occurring strictly before '2026-05-02' starting from '2026-05-01'.",
+    "setup_sql": "CREATE TABLE events (id INT, ts TEXT); INSERT INTO events VALUES (1, '2026-05-01 10:00:00'), (2, '2026-05-02 00:00:00');",
+    "ground_truth_query": "SELECT id FROM events WHERE ts >= '2026-05-01' AND ts < '2026-05-02';",
+    "buggy_llm_query": "SELECT id FROM events WHERE ts BETWEEN '2026-05-01' AND '2026-05-02';"
+  },
+  {
+    "trap_id": "TRAP-013",
+    "trap_name": "AVG() Ignoring NULLs Instead of Treating as Zero",
+    "explanation": "Calculate the average score across all students, treating missing (NULL) scores as 0.",
+    "setup_sql": "CREATE TABLE scores (student TEXT, score INT); INSERT INTO scores VALUES ('A', 100), ('B', NULL);",
+    "ground_truth_query": "SELECT AVG(COALESCE(score, 0)) FROM scores;",
+    "buggy_llm_query": "SELECT AVG(score) FROM scores;"
+  },
+  {
+    "trap_id": "TRAP-014",
+    "trap_name": "Self-Join Duplicate Pair Mirroring",
+    "explanation": "Find unique pairs of teammates in the same team without duplicating (A, B) and (B, A) or pairing a person with themselves.",
+    "setup_sql": "CREATE TABLE team (name TEXT, squad TEXT); INSERT INTO team VALUES ('Alice', 'Red'), ('Bob', 'Red'), ('Charlie', 'Blue');",
+    "ground_truth_query": "SELECT a.name, b.name FROM team a JOIN team b ON a.squad = b.squad AND a.name < b.name;",
+    "buggy_llm_query": "SELECT a.name, b.name FROM team a JOIN team b ON a.squad = b.squad AND a.name != b.name;"
+  },
+  {
+    "trap_id": "TRAP-015",
+    "trap_name": "Scalar Subquery Returning Multiple Rows",
+    "explanation": "Find users who have placed at least one order over 500.",
+    "setup_sql": "CREATE TABLE users (id INT, name TEXT); CREATE TABLE orders (id INT, user_id INT, total INT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob'); INSERT INTO orders VALUES (1, 1, 600), (2, 2, 700);",
+    "ground_truth_query": "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders WHERE total > 500);",
+    "buggy_llm_query": "SELECT name FROM users WHERE id = (SELECT user_id FROM orders WHERE total > 500);"
   }
 ]
