@@ -1,3 +1,7 @@
+# SQL-Trap-Eval
+Adversarial SQL Trap Evaluation Engine & Benchmark Dashboard
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-success?style=for-the-badge)](https://sql-trap-eval.onrender.com)
 # SQL-Trap-Eval 🛡️⚡
 > **Adversarial SQL Trap Evaluation Engine & Full-Stack Benchmark Dashboard**
 
