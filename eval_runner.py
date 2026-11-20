@@ -1,100 +1,108 @@
 import json
+import re
 import sqlite3
-import sys
+import time
+import urllib.error
+import urllib.request
 
-def run_benchmark():
-    print("🚀 Initializing SQL-Trap-Eval Automated Benchmark Runner...")
-    
+
+def _strip_sql_fences(sql_text):
+    cleaned = (sql_text or "").strip()
+    cleaned = re.sub(r"^```(?:sql)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
+
+
+def evaluate_llm_live(trap, model_name, api_key):
     try:
-        with open("traps.json", "r") as f:
-            traps = json.load(f)
-    except FileNotFoundError:
-        print("❌ Error: traps.json not found in root directory.")
-        sys.exit(1)
+        model = (model_name or "gemini-3.5-flash-lite").strip()
+        if not api_key or not api_key.strip():
+            return {"success": False, "error": "API key is missing."}
 
-    total_traps = len(traps)
-    traps_caught = 0
-    execution_results = []
+        prompt = (
+            "You are a SQL benchmark test subject. Write a single SQL query "
+            "to answer the requirement using the schema and sample data below.\n"
+            f"Requirement: {trap.get('explanation', '')}\n"
+            f"Schema/Setup SQL:\n{trap.get('setup_sql', '')}\n"
+            "Return only the SQL query with no explanation."
+        )
 
-    print(f"📊 Loaded {total_traps} adversarial SQL traps. Executing against SQLite oracle...\n")
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key.strip()}"
+        )
 
-    for trap in traps:
-        trap_id = trap["trap_id"]
-        trap_name = trap["trap_name"]
-        setup_sql = trap["setup_sql"]
-        gt_query = trap["ground_truth_query"]
-        buggy_query = trap["buggy_llm_query"]
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": prompt}]
+                }
+            ]
+        }
 
+        max_attempts = 3
+        body = None
+
+        for attempt in range(1, max_attempts + 1):
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="replace")
+                if e.code == 429:
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Quota limit reached (HTTP 429) for model '{model}'. "
+                            "Try switching to 'gemini-3.5-flash-lite' or 'gemini-3.1-flash-lite' "
+                            "or wait for the daily quota reset."
+                        ),
+                    }
+                if e.code == 503 and attempt < max_attempts:
+                    time.sleep(1)
+                    continue
+                return {"success": False, "error": f"HTTP {e.code}: {err_body}"}
+
+        candidates = (body or {}).get("candidates", [])
+        parts = (
+            candidates[0]
+            .get("content", {})
+            .get("parts", [])
+            if candidates
+            else []
+        )
+        raw_sql = "".join(p.get("text", "") for p in parts).strip()
+        generated_sql = _strip_sql_fences(raw_sql)
+
+        conn = sqlite3.connect(":memory:")
         try:
-            conn = sqlite3.connect(":memory:")
             cursor = conn.cursor()
-            cursor.executescript(setup_sql)
+            cursor.executescript(trap.get("setup_sql", ""))
 
-            # Get Ground Truth
-            cursor.execute(gt_query)
-            expected = cursor.fetchall()
+            cursor.execute(trap.get("ground_truth_query", ""))
+            expected_rows = cursor.fetchall()
 
-            # Execute Buggy LLM Query
-            cursor.execute(buggy_query)
-            actual = cursor.fetchall()
-            
-            passed = (expected == actual)
+            cursor.execute(generated_sql)
+            actual_rows = cursor.fetchall()
+        finally:
             conn.close()
 
-            # If passed is False, the adversarial trap successfully caught the LLM failure!
-            caught = not passed
-            if caught:
-                traps_caught += 1
+        passed = actual_rows == expected_rows
 
-            status = "CAUGHT TRAP 🛡️" if caught else "PASSED (LLM beat trap) ⚠️"
-            print(f"[{trap_id}] {trap_name}")
-            print(f"  Status:   {status}")
-            print(f"  Expected: {expected}")
-            print(f"  Actual:   {actual}\n")
+        return {
+            "success": True,
+            "passed": passed,
+            "generated_sql": generated_sql,
+            "expected": str(expected_rows),
+            "actual": str(actual_rows),
+        }
 
-            execution_results.append({
-                "trap_id": trap_id,
-                "trap_name": trap_name,
-                "caught_trap": caught,
-                "expected": str(expected),
-                "actual": str(actual)
-            })
-
-        except Exception as e:
-            print(f"[{trap_id}] {trap_name}")
-            print(f"  Status:   TRAP TRIGGERED (SQL Execution Error: {e}) 💥\n")
-            traps_caught += 1  # SQL execution error means the trap successfully broke the query
-            execution_results.append({
-                "trap_id": trap_id,
-                "trap_name": trap_name,
-                "caught_trap": True,
-                "error": str(e)
-            })
-
-    # Summary Scorecard
-    scorecard = {
-        "total_traps": total_traps,
-        "traps_caught": traps_caught,
-        "adversarial_catch_rate": f"{(traps_caught / total_traps) * 100:.1f}%"
-    }
-
-    print("=" * 50)
-    print("📈 BENCHMARK SUMMARY SCORECARD")
-    print(f"  Total Traps Evaluated:    {scorecard['total_traps']}")
-    print(f"  Traps Successfully Caught: {scorecard['traps_caught']}")
-    print(f"  Adversarial Catch Rate:   {scorecard['adversarial_catch_rate']}")
-    print("=" * 50)
-
-    # Save structured report
-    report = {
-        "benchmark": "sql-trap-eval",
-        "scorecard": scorecard,
-        "results": execution_results
-    }
-    
-    with open("benchmark_results.json", "w") as out:
-        json.dump(report, out, indent=2)
-    print("💾 Quantitative benchmark report saved to 'benchmark_results.json'.")
-
-if __name__ == "__main__":
-    run_benchmark()
+    except Exception as e:
+        return {"success": False, "error": str(e)}

@@ -1,60 +1,77 @@
 import os
-from flask import Flask, render_template, request, jsonify
+import yaml
 import sqlite3
-import json
+from flask import Flask, render_template, request, jsonify
+from eval_runner import evaluate_llm_live
 
 app = Flask(__name__)
 
 def load_traps():
-    with open("traps.json", "r") as f:
-        return json.load(f)
+    eval_path = os.path.join(os.path.dirname(__file__), 'eval.yml')
+    print(f"Looking for eval.yml at: {eval_path}")
+    if os.path.exists(eval_path):
+        with open(eval_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            if isinstance(data, dict):
+                traps = data.get('traps', [])
+            elif isinstance(data, list):
+                traps = data
+            else:
+                traps = []
+            print(f"Successfully loaded {len(traps)} traps.")
+            return traps
+    else:
+        print("ERROR: eval.yml not found in directory!")
+        return []
 
-@app.route("/")
+TRAPS = load_traps()
+
+@app.route('/')
 def index():
-    traps = load_traps()
-    return render_template("index.html", traps=traps)
+    return render_template('index.html', traps=TRAPS)
 
-@app.route("/evaluate", methods=["POST"])
+@app.route('/evaluate', methods=['POST'])
 def evaluate():
-    data = request.json
-    trap_id = data.get("trap_id")
-    custom_query = data.get("query")
-    
-    traps = load_traps()
-    target_trap = next((t for t in traps if t["trap_id"] == trap_id), None)
-    
-    if not target_trap:
-        return jsonify({"error": "Trap not found"}), 404
+    data = request.get_json() or {}
+    trap_id = data.get('trap_id')
+    mode = data.get('mode', 'llm')
+    model_name = data.get('model')
+    api_key = data.get('api_key')
 
-    try:
-        conn = sqlite3.connect(":memory:")
-        cursor = conn.cursor()
-        cursor.executescript(target_trap["setup_sql"])
-        
-        # Get Ground Truth
-        cursor.execute(target_trap["ground_truth_query"])
-        expected = cursor.fetchall()
-        
-        # Execute User/Query
-        cursor.execute(custom_query)
-        actual = cursor.fetchall()
-        passed = (expected == actual)
-        
-        conn.close()
-        return jsonify({
-            "success": True,
-            "passed": passed,
-            "expected": str(expected),
-            "actual": str(actual),
-            "explanation": target_trap["explanation"]
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "explanation": target_trap["explanation"]
-        })
+    trap = next((t for t in TRAPS if t.get('trap_id') == trap_id), None)
+    if not trap:
+        return jsonify({"success": False, "error": "Trap not found"}), 404
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    if mode == 'manual':
+        user_query = (data.get('query') or '').strip()
+        if not user_query:
+            return jsonify({"success": False, "error": "Please enter a SQL query to test."})
+        try:
+            conn = sqlite3.connect(":memory:")
+            cursor = conn.cursor()
+            cursor.executescript(trap.get('setup_sql', ''))
+
+            cursor.execute(trap.get('ground_truth_query', ''))
+            expected_rows = cursor.fetchall()
+
+            cursor.execute(user_query)
+            actual_rows = cursor.fetchall()
+            conn.close()
+
+            passed = (actual_rows == expected_rows)
+            return jsonify({
+                "success": True,
+                "passed": passed,
+                "generated_sql": user_query,
+                "expected": str(expected_rows),
+                "actual": str(actual_rows),
+                "message": "Query output matches ground truth." if passed else "Query output differs from ground truth."
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": f"SQL Error: {e}"})
+
+    result = evaluate_llm_live(trap, model_name, api_key)
+    return jsonify(result)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
