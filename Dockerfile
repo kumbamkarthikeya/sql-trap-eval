@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /
 
 # Copy requirements/dependency list & install python packages
 COPY requirements.txt* ./
-RUN pip install --no-cache-dir-r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code into container
 COPY . .
